@@ -1,80 +1,55 @@
 export default async function handler(req, res) {
-  // 🔍 LOGS DE DEBUG - Remueve en producción
-  console.log("=== INICIO DE REQUEST ===");
-  console.log("Method:", req.method);
-  console.log("Headers:", req.headers);
-  console.log("Body:", req.body);
+  // ⚡ CORS: permite múltiples dominios
+  const allowedOrigins = [
+    "https://www.advantms.com",
+    "https://advantms.webflow.io",
+    "http://localhost:3000",
+    "https://127.0.0.1:5500"
+  ];
+  
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin) || !origin) { // !origin para testing directo
+    res.setHeader("Access-Control-Allow-Origin", origin || "*");
+  }
+  
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS, GET");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  
+  // Preflight request
+  if (req.method === "OPTIONS") return res.status(200).end();
+  
+  // Health check
+  if (req.method === "GET") {
+    return res.status(200).json({ 
+      status: "API funcionando", 
+      time: new Date().toISOString() 
+    });
+  }
+  
+  if (req.method !== "POST")
+    return res.status(405).json({ error: "Method not allowed" });
+
+  const { url, strategy = "mobile" } = req.body || {};
+  if (!url) return res.status(400).json({ error: "URL requerida" });
 
   try {
-    // ⚡ CORS más permisivo para debug
-    res.setHeader("Access-Control-Allow-Origin", "*"); // TEMPORALMENTE
-    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS, GET");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-    
-    // Preflight request
-    if (req.method === "OPTIONS") {
-      console.log("OPTIONS request - returning 200");
-      return res.status(200).end();
-    }
-
-    // Permitir GET para testing básico
-    if (req.method === "GET") {
-      console.log("GET request - health check");
-      return res.status(200).json({ 
-        status: "API funcionando", 
-        time: new Date().toISOString(),
-        hasKey: !!process.env.PAGESPEED_KEY 
-      });
-    }
-
-    if (req.method !== "POST") {
-      console.log("Method not allowed:", req.method);
-      return res.status(405).json({ error: "Method not allowed" });
-    }
-
-    // Verificar variable de entorno
     const KEY = process.env.PAGESPEED_KEY;
-    console.log("API Key exists:", !!KEY);
-    
     if (!KEY) {
-      console.log("❌ PAGESPEED_KEY no encontrada");
       return res.status(500).json({ 
         error: "API Key no configurada", 
-        details: "Verifica que PAGESPEED_KEY esté en las variables de entorno de Vercel" 
+        details: "Verifica PAGESPEED_KEY en variables de entorno" 
       });
     }
 
-    const { url, strategy = "mobile" } = req.body || {};
-    console.log("URL recibida:", url);
-    console.log("Strategy:", strategy);
-    
-    if (!url) {
-      console.log("❌ URL no proporcionada");
-      return res.status(400).json({ error: "URL requerida" });
-    }
+    const apiUrl = `https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(url)}&strategy=${strategy}&category=performance&category=seo&key=${KEY}`;
 
-    // Construir URL de la API
-    const apiUrl = `https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(url)}&strategy=${strategy}&key=${KEY}`;
-    console.log("Calling PageSpeed API...");
-
-    // Petición a Google PageSpeed con timeout
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 25000); // 25 segundos
-
+    // Petición a Google PageSpeed
     const r = await fetch(apiUrl, { 
-      signal: controller.signal,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; PageSpeedAnalyzer/1.0)'
-      }
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; PageSpeedAnalyzer/1.0)' }
     });
     
-    clearTimeout(timeout);
-    console.log("PageSpeed API status:", r.status);
-
     if (!r.ok) {
-      console.log("❌ PageSpeed API error:", r.status, r.statusText);
       const errorText = await r.text();
-      console.log("Error response:", errorText);
       return res.status(500).json({ 
         error: `Google PageSpeed API error: ${r.status}`, 
         details: errorText 
@@ -82,55 +57,77 @@ export default async function handler(req, res) {
     }
 
     const text = await r.text();
-    console.log("Response length:", text.length);
-    
     let data;
+    
     try {
       data = JSON.parse(text);
-      console.log("JSON parsed successfully");
     } catch (err) {
-      console.log("❌ JSON Parse Error:", err.message);
-      console.log("Response text preview:", text.substring(0, 500));
       return res.status(500).json({ 
         error: "Error parseando respuesta PageSpeed", 
-        details: `Parse error: ${err.message}` 
+        details: err.message 
       });
     }
 
     if (data.error) {
-      console.log("❌ Google API returned error:", data.error);
       return res.status(500).json({ 
         error: "Google API error", 
         details: data.error 
       });
     }
 
-    // Verificar estructura de datos
     const lh = data.lighthouseResult || {};
-    console.log("Lighthouse result exists:", !!lh);
-    console.log("Categories exist:", !!lh.categories);
-    console.log("Audits exist:", !!lh.audits);
-
     const audits = lh.audits || {};
+
+    // 📊 MÉTRICAS MEJORADAS
     
-    // Métricas esenciales con logs
+    // Performance
     const perfScore = lh.categories?.performance?.score;
-    console.log("Performance score raw:", perfScore);
     const perf = perfScore !== undefined ? Math.round(perfScore * 100) : null;
     
+    // SEO - Verificar si existe la categoría
     const seoScore = lh.categories?.seo?.score;
-    console.log("SEO score raw:", seoScore);
     const seo = seoScore !== undefined ? Math.round(seoScore * 100) : null;
     
+    // 🕐 TIEMPO DE CARGA - Formato mejorado
     const lcpAudit = audits["largest-contentful-paint"];
-    console.log("LCP audit exists:", !!lcpAudit);
-    const loadTime = lcpAudit?.displayValue ?? null;
+    let tiempoCarga = "No disponible";
     
+    if (lcpAudit?.displayValue) {
+      // Si viene como "1.5 s", extraer solo el número
+      const match = lcpAudit.displayValue.match(/[\d.]+/);
+      if (match) {
+        const segundos = parseFloat(match[0]);
+        tiempoCarga = `${segundos} segundos`;
+      }
+    }
+    
+    // 📏 TAMAÑO DE PÁGINA - Convertir a MB
     const bytesAudit = audits["total-byte-weight"];
-    console.log("Bytes audit exists:", !!bytesAudit);
-    const pageSize = bytesAudit?.displayValue ?? "No disponible";
+    let tamanoPagina = "No disponible";
+    
+    if (bytesAudit?.numericValue) {
+      // Convertir bytes a MB
+      const mb = (bytesAudit.numericValue / (1024 * 1024)).toFixed(1);
+      tamanoPagina = `${mb} MB`;
+    } else if (bytesAudit?.displayValue) {
+      // Si viene en formato texto como "2,002 KiB"
+      const texto = bytesAudit.displayValue;
+      if (texto.includes('KiB')) {
+        const match = texto.match(/[\d,]+/);
+        if (match) {
+          const kib = parseFloat(match[0].replace(/,/g, ''));
+          const mb = (kib * 1.024 / 1000).toFixed(1); // KiB a MB aproximado
+          tamanoPagina = `${mb} MB`;
+        }
+      } else if (texto.includes('MB')) {
+        const match = texto.match(/[\d.]+/);
+        if (match) {
+          tamanoPagina = `${match[0]} MB`;
+        }
+      }
+    }
 
-    // Clasificación simple
+    // Clasificación
     const clasificar = (score) => {
       if (score === null) return "No disponible";
       if (score >= 85) return "Bueno 🎉";
@@ -138,35 +135,25 @@ export default async function handler(req, res) {
       return "Malo 🛑";
     };
 
-    const result = {
+    return res.status(200).json({
       calificacion: clasificar(perf),
       performance: perf,
       seo,
-      tiempoCarga: loadTime,
-      tamanoPagina: pageSize,
+      tiempoCarga,
+      tamanoPagina,
+      // Debug info (remover en producción)
       debug: {
-        hasLighthouse: !!lh,
-        hasCategories: !!lh.categories,
-        hasAudits: !!lh.audits,
-        perfRaw: perfScore,
-        seoRaw: seoScore
+        seoExists: !!lh.categories?.seo,
+        lcpRaw: lcpAudit?.displayValue,
+        bytesRaw: bytesAudit?.displayValue,
+        bytesNumeric: bytesAudit?.numericValue
       }
-    };
-
-    console.log("Final result:", result);
-    console.log("=== FIN DE REQUEST EXITOSO ===");
+    });
     
-    return res.status(200).json(result);
-
   } catch (err) {
-    console.log("❌ CATCH ERROR:", err.message);
-    console.log("Error stack:", err.stack);
-    console.log("=== FIN DE REQUEST CON ERROR ===");
-    
     return res.status(500).json({ 
       error: "Error interno del servidor", 
-      details: err.message,
-      type: err.name
+      details: err.message 
     });
   }
 }
