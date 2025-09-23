@@ -1,12 +1,22 @@
 export default async function handler(req, res) {
-  // ⚡ CORS: permitir solo tu dominio
-  res.setHeader("Access-Control-Allow-Origin", "https://www.advantms.com");
+  // ⚡ CORS: permitir múltiples dominios
+  const allowedOrigins = [
+    "https://www.advantms.com",
+    "https://advantms.webflow.io", // dominio de Webflow
+    "http://localhost:3000",       // para testing local
+    "https://127.0.0.1:5500"       // para Live Server
+  ];
+  
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+  
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
+  
   // Preflight request
   if (req.method === "OPTIONS") return res.status(200).end();
-
   if (req.method !== "POST")
     return res.status(405).json({ error: "Method not allowed" });
 
@@ -21,8 +31,9 @@ export default async function handler(req, res) {
 
     // Petición a Google PageSpeed
     const r = await fetch(apiUrl);
-    const text = await r.text(); // Capturamos texto por si falla
+    const text = await r.text();
     let data;
+    
     try {
       data = JSON.parse(text);
     } catch (err) {
@@ -40,11 +51,9 @@ export default async function handler(req, res) {
     const perf = lh.categories?.performance?.score !== undefined
       ? Math.round(lh.categories.performance.score * 100)
       : null;
-
     const seo = lh.categories?.seo?.score !== undefined
       ? Math.round(lh.categories.seo.score * 100)
       : null;
-
     const loadTime = audits["largest-contentful-paint"]?.displayValue ?? null;
     const pageSize = audits["total-byte-weight"]?.displayValue ?? "No disponible";
 
@@ -62,7 +71,6 @@ export default async function handler(req, res) {
       tiempoCarga: loadTime,
       tamanoPagina: pageSize,
     });
-
   } catch (err) {
     return res.status(500).json({ error: "Error en API", details: err.message });
   }
