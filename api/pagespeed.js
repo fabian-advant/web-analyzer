@@ -35,18 +35,34 @@ export default async function handler(req, res) {
         const lh = data.lighthouseResult || {};
         const audits = lh.audits || {};
         
+        // Obtener puntuación SEO de manera más robusta
+        let seoScore = null;
+        if (lh.categories?.seo?.score !== undefined && lh.categories.seo.score !== null) {
+          seoScore = Math.round(lh.categories.seo.score * 100);
+        }
+        
+        // Obtener captura de pantalla
+        let screenshot = null;
+        if (lh.fullPageScreenshot?.screenshot?.data) {
+          screenshot = lh.fullPageScreenshot.screenshot.data;
+        }
+        
+        // Usar fecha actual para la captura
+        const now = new Date();
+        const captureDate = now.toLocaleDateString('es-ES', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+        
         return {
           performance: lh.categories?.performance ? Math.round(lh.categories.performance.score * 100) : null,
-          seo: lh.categories?.seo ? Math.round(lh.categories.seo.score * 100) : null,
+          seo: seoScore,
           tiempoCarga: audits['largest-contentful-paint']?.displayValue || null,
-          screenshot: lh.fullPageScreenshot?.screenshot?.data || null,
-          captureDate: new Date(lh.fetchTime).toLocaleDateString('es-ES', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-          }),
+          screenshot: screenshot,
+          captureDate: captureDate,
           // Detectar reCAPTCHA
           hasRecaptcha: detectRecaptcha(audits)
         };
@@ -54,14 +70,26 @@ export default async function handler(req, res) {
 
       // Función para detectar reCAPTCHA
       function detectRecaptcha(audits) {
-        // Buscar en el código fuente si hay reCAPTCHA
-        const sourceCode = audits['unused-css-rules']?.details?.items || [];
-        const hasRecaptchaScript = sourceCode.some(item => 
+        // Buscar reCAPTCHA en varios auditores
+        const scriptsUsed = audits['unused-javascript']?.details?.items || [];
+        const cssUsed = audits['unused-css-rules']?.details?.items || [];
+        
+        // Buscar en scripts y CSS
+        const hasRecaptchaInScripts = scriptsUsed.some(item => 
           item.url && item.url.includes('recaptcha')
         );
         
-        // También buscar en otros auditores que puedan detectar scripts
-        return hasRecaptchaScript;
+        const hasRecaptchaInCSS = cssUsed.some(item => 
+          item.url && item.url.includes('recaptcha')
+        );
+        
+        // También buscar en otros auditores
+        const thirdPartySummary = audits['third-party-summary']?.details?.items || [];
+        const hasRecaptchaInThirdParty = thirdPartySummary.some(item => 
+          item.entity && item.entity.name && item.entity.name.toLowerCase().includes('recaptcha')
+        );
+        
+        return hasRecaptchaInScripts || hasRecaptchaInCSS || hasRecaptchaInThirdParty;
       }
 
       const results = {
