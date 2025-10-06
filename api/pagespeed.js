@@ -19,11 +19,10 @@ export default async function handler(req, res) {
     try {
       // Función para obtener datos de PageSpeed Insights
       const getPageSpeedData = async (strategy) => {
-        // Usar la URL básica sin especificar categorías para obtener todas por defecto
-        const apiUrl = `https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(url)}&strategy=${strategy}&key=${KEY}&screenshot=true`;
+        // Especificar categorías explícitamente para obtener performance y seo
+        const apiUrl = `https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(url)}&strategy=${strategy}&key=${KEY}&category=performance&category=seo`;
         const response = await fetch(apiUrl);
         const data = await response.json();
-        
         
         return data;
       };
@@ -43,10 +42,10 @@ export default async function handler(req, res) {
         // Obtener puntuación SEO como estaba originalmente
         const seoScore = lh.categories?.seo ? Math.round(lh.categories.seo.score * 100) : null;
         
-        // Obtener captura de pantalla
+        // Obtener captura de pantalla desde la ubicación correcta
         let screenshot = null;
-        if (lh.fullPageScreenshot?.screenshot?.data) {
-          screenshot = lh.fullPageScreenshot.screenshot.data;
+        if (audits['final-screenshot']?.details?.data) {
+          screenshot = audits['final-screenshot'].details.data;
         }
         
         // Usar fecha actual para la captura
