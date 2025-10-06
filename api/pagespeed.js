@@ -19,9 +19,13 @@ export default async function handler(req, res) {
     try {
       // Función para obtener datos de PageSpeed Insights
       const getPageSpeedData = async (strategy) => {
+        // Usar la URL básica sin especificar categorías para obtener todas por defecto
         const apiUrl = `https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(url)}&strategy=${strategy}&key=${KEY}&screenshot=true`;
         const response = await fetch(apiUrl);
-        return await response.json();
+        const data = await response.json();
+        
+        
+        return data;
       };
 
       // Obtener datos para móvil y escritorio en paralelo
@@ -35,11 +39,9 @@ export default async function handler(req, res) {
         const lh = data.lighthouseResult || {};
         const audits = lh.audits || {};
         
-        // Obtener puntuación SEO de manera más robusta
-        let seoScore = null;
-        if (lh.categories?.seo?.score !== undefined && lh.categories.seo.score !== null) {
-          seoScore = Math.round(lh.categories.seo.score * 100);
-        }
+        
+        // Obtener puntuación SEO como estaba originalmente
+        const seoScore = lh.categories?.seo ? Math.round(lh.categories.seo.score * 100) : null;
         
         // Obtener captura de pantalla
         let screenshot = null;
@@ -92,9 +94,12 @@ export default async function handler(req, res) {
         return hasRecaptchaInScripts || hasRecaptchaInCSS || hasRecaptchaInThirdParty;
       }
 
+      const mobileMetrics = extractMetrics(mobileData);
+      const desktopMetrics = extractMetrics(desktopData);
+
       const results = {
-        mobile: extractMetrics(mobileData),
-        desktop: extractMetrics(desktopData)
+        mobile: mobileMetrics,
+        desktop: desktopMetrics
       };
 
       return res.json(results);
