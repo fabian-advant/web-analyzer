@@ -48,14 +48,15 @@ export default async function handler(req, res) {
           screenshot = audits['final-screenshot'].details.data;
         }
         
-        // Usar fecha actual para la captura
+        // Usar fecha actual para la captura con horario local y formato AM/PM
         const now = new Date();
         const captureDate = now.toLocaleDateString('es-ES', {
           year: 'numeric',
           month: 'long',
           day: 'numeric',
           hour: '2-digit',
-          minute: '2-digit'
+          minute: '2-digit',
+          hour12: true
         });
         
         return {
